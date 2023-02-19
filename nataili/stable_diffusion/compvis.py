@@ -30,6 +30,8 @@ from torch import nn
 from transformers import CLIPFeatureExtractor
 
 from ldm2.models.diffusion.dpm_solver import DPMSolverSampler
+from ldm2.models.diffusion.ddim import DDIMSampler as V2DDIMSampler
+from ldm2.models.diffusion.plms import PLMSSampler as V2PLMSSampler
 from ldm.models.diffusion.ddim import DDIMSampler
 from ldm.models.diffusion.kdiffusion import CFGMaskedDenoiser, KDiffusionSampler
 from ldm.models.diffusion.plms import PLMSSampler
@@ -298,7 +300,7 @@ class CompVis:
             karras=False,
             sigma_override: dict = None,
         ):
-            if sampler_name == "dpmsolver":
+            if sampler_name in ["dpmsolver", "PLMS", "DDIM"]:
                 samples_ddim, _ = sampler.sample(
                     ddim_steps,
                     batch_size,
@@ -324,34 +326,33 @@ class CompVis:
 
         def create_sampler_by_sampler_name(model):
             nonlocal sampler_name
-            if self.model_baseline == "stable diffusion 2":
-                sampler_name = "dpmsolver"
+            v = model.parameterization == "v"
             if sampler_name == "PLMS":
-                sampler = PLMSSampler(model)
+                sampler = PLMSSampler(model) if not v else V2PLMSSampler(model)
             elif sampler_name == "DDIM":
-                sampler = DDIMSampler(model)
+                sampler = DDIMSampler(model) if not v else V2DDIMSampler(model)
             elif sampler_name == "k_dpm_2_a":
-                sampler = KDiffusionSampler(model, "dpm_2_ancestral")
+                sampler = KDiffusionSampler(model, "dpm_2_ancestral", v)
             elif sampler_name == "k_dpm_2":
-                sampler = KDiffusionSampler(model, "dpm_2")
+                sampler = KDiffusionSampler(model, "dpm_2", v)
             elif sampler_name == "k_euler_a":
-                sampler = KDiffusionSampler(model, "euler_ancestral")
+                sampler = KDiffusionSampler(model, "euler_ancestral", v)
             elif sampler_name == "k_euler":
-                sampler = KDiffusionSampler(model, "euler")
+                sampler = KDiffusionSampler(model, "euler", v)
             elif sampler_name == "k_heun":
-                sampler = KDiffusionSampler(model, "heun")
+                sampler = KDiffusionSampler(model, "heun", v)
             elif sampler_name == "k_lms":
-                sampler = KDiffusionSampler(model, "lms")
+                sampler = KDiffusionSampler(model, "lms", v)
             elif sampler_name == "k_dpm_fast":
-                sampler = KDiffusionSampler(model, "dpm_fast")
+                sampler = KDiffusionSampler(model, "dpm_fast", v)
             elif sampler_name == "k_dpm_adaptive":
-                sampler = KDiffusionSampler(model, "dpm_adaptive")
+                sampler = KDiffusionSampler(model, "dpm_adaptive", v)
             elif sampler_name == "k_dpmpp_2s_a":
-                sampler = KDiffusionSampler(model, "dpmpp_2s_ancestral")
+                sampler = KDiffusionSampler(model, "dpmpp_2s_ancestral, v)
             elif sampler_name == "k_dpmpp_2m":
-                sampler = KDiffusionSampler(model, "dpmpp_2m")
+                sampler = KDiffusionSampler(model, "dpmpp_2m", v)
             elif sampler_name == "k_dpmpp_sde":
-                sampler = KDiffusionSampler(model, "dpmpp_sde")
+                sampler = KDiffusionSampler(model, "dpmpp_sde", v)
             elif sampler_name == "dpmsolver":
                 sampler = DPMSolverSampler(model)
             else:
