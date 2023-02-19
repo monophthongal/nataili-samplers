@@ -348,7 +348,7 @@ class CompVis:
             elif sampler_name == "k_dpm_adaptive":
                 sampler = KDiffusionSampler(model, "dpm_adaptive", v)
             elif sampler_name == "k_dpmpp_2s_a":
-                sampler = KDiffusionSampler(model, "dpmpp_2s_ancestral, v)
+                sampler = KDiffusionSampler(model, "dpmpp_2s_ancestral", v)
             elif sampler_name == "k_dpmpp_2m":
                 sampler = KDiffusionSampler(model, "dpmpp_2m", v)
             elif sampler_name == "k_dpmpp_sde":
