@@ -19,20 +19,19 @@ import os
 import time
 from pathlib import Path
 
+import open_clip
 import torch
+import transformers.utils.hub
 from omegaconf import OmegaConf
 from torch import nn
 
+import ldm.modules.encoders.modules
 from ldm.util import instantiate_from_config
 from nataili.cache import get_cache_directory
 from nataili.model_manager.base import BaseModelManager
 from nataili.util.logger import logger
 from nataili.util.voodoo import push_model_to_plasma
 
-import ldm.modules.encoders.modules
-import open_clip
-import torch
-import transformers.utils.hub
 
 class CompVisModelManager(BaseModelManager):
     def __init__(self, download_reference=True, custom_path="models/custom"):
@@ -92,9 +91,9 @@ class CompVisModelManager(BaseModelManager):
         if "global_step" in pl_sd:
             logger.info(f"Global Step: {pl_sd['global_step']}")
         sd = pl_sd["state_dict"] if "state_dict" in pl_sd else pl_sd
-        
-        sd1_clip_weight = 'cond_stage_model.transformer.text_model.embeddings.token_embedding.weight'
-        sd2_clip_weight = 'cond_stage_model.model.transformer.resblocks.0.attn.in_proj_weight'
+
+        sd1_clip_weight = "cond_stage_model.transformer.text_model.embeddings.token_embedding.weight"
+        sd2_clip_weight = "cond_stage_model.model.transformer.resblocks.0.attn.in_proj_weight"
         clip_is_included_into_sd = sd1_clip_weight in sd or sd2_clip_weight in sd
 
         model = None
@@ -105,9 +104,9 @@ class CompVisModelManager(BaseModelManager):
             pass
 
         if model is None:
-            logger.info('Failed to create model quickly; will retry using slow method.')
+            logger.info("Failed to create model quickly; will retry using slow method.")
             model = instantiate_from_config(config.model)
-        
+
         m, u = model.load_state_dict(sd, strict=False)
         model = model.eval()
         for m in model.modules():
@@ -191,7 +190,7 @@ class CompVisModelManager(BaseModelManager):
             return False
         return self.check_file_available(self.get_model_files(model_name)[0]["path"])
 
-    
+
 class DisableInitialization:
     """
     When an object of this class enters a `with` block, it starts:
@@ -228,18 +227,25 @@ class DisableInitialization:
             return self.create_model_and_transforms(*args, pretrained=None, **kwargs)
 
         def CLIPTextModel_from_pretrained(pretrained_model_name_or_path, *model_args, **kwargs):
-            res = self.CLIPTextModel_from_pretrained(None, *model_args, config=pretrained_model_name_or_path, state_dict={}, **kwargs)
+            res = self.CLIPTextModel_from_pretrained(
+                None, *model_args, config=pretrained_model_name_or_path, state_dict={}, **kwargs
+            )
             res.name_or_path = pretrained_model_name_or_path
             return res
 
         def transformers_modeling_utils_load_pretrained_model(*args, **kwargs):
-            args = args[0:3] + ('/', ) + args[4:]  # resolved_archive_file; must set it to something to prevent what seems to be a bug
+            args = (
+                args[0:3] + ("/",) + args[4:]
+            )  # resolved_archive_file; must set it to something to prevent what seems to be a bug
             return self.transformers_modeling_utils_load_pretrained_model(*args, **kwargs)
 
         def transformers_utils_hub_get_file_from_cache(original, url, *args, **kwargs):
-
             # this file is always 404, prevent making request
-            if url == 'https://huggingface.co/openai/clip-vit-large-patch14/resolve/main/added_tokens.json' or url == 'openai/clip-vit-large-patch14' and args[0] == 'added_tokens.json':
+            if (
+                url == "https://huggingface.co/openai/clip-vit-large-patch14/resolve/main/added_tokens.json"
+                or url == "openai/clip-vit-large-patch14"
+                and args[0] == "added_tokens.json"
+            ):
                 return None
 
             try:
@@ -251,25 +257,45 @@ class DisableInitialization:
                 return original(url, *args, local_files_only=False, **kwargs)
 
         def transformers_utils_hub_get_from_cache(url, *args, local_files_only=False, **kwargs):
-            return transformers_utils_hub_get_file_from_cache(self.transformers_utils_hub_get_from_cache, url, *args, **kwargs)
+            return transformers_utils_hub_get_file_from_cache(
+                self.transformers_utils_hub_get_from_cache, url, *args, **kwargs
+            )
 
         def transformers_tokenization_utils_base_cached_file(url, *args, local_files_only=False, **kwargs):
-            return transformers_utils_hub_get_file_from_cache(self.transformers_tokenization_utils_base_cached_file, url, *args, **kwargs)
+            return transformers_utils_hub_get_file_from_cache(
+                self.transformers_tokenization_utils_base_cached_file, url, *args, **kwargs
+            )
 
         def transformers_configuration_utils_cached_file(url, *args, local_files_only=False, **kwargs):
-            return transformers_utils_hub_get_file_from_cache(self.transformers_configuration_utils_cached_file, url, *args, **kwargs)
+            return transformers_utils_hub_get_file_from_cache(
+                self.transformers_configuration_utils_cached_file, url, *args, **kwargs
+            )
 
-        self.replace(torch.nn.init, 'kaiming_uniform_', do_nothing)
-        self.replace(torch.nn.init, '_no_grad_normal_', do_nothing)
-        self.replace(torch.nn.init, '_no_grad_uniform_', do_nothing)
+        self.replace(torch.nn.init, "kaiming_uniform_", do_nothing)
+        self.replace(torch.nn.init, "_no_grad_normal_", do_nothing)
+        self.replace(torch.nn.init, "_no_grad_uniform_", do_nothing)
 
         if self.disable_clip:
-            self.create_model_and_transforms = self.replace(open_clip, 'create_model_and_transforms', create_model_and_transforms_without_pretrained)
-            self.CLIPTextModel_from_pretrained = self.replace(ldm.modules.encoders.modules.CLIPTextModel, 'from_pretrained', CLIPTextModel_from_pretrained)
-            self.transformers_modeling_utils_load_pretrained_model = self.replace(transformers.modeling_utils.PreTrainedModel, '_load_pretrained_model', transformers_modeling_utils_load_pretrained_model)
-            self.transformers_tokenization_utils_base_cached_file = self.replace(transformers.tokenization_utils_base, 'cached_file', transformers_tokenization_utils_base_cached_file)
-            self.transformers_configuration_utils_cached_file = self.replace(transformers.configuration_utils, 'cached_file', transformers_configuration_utils_cached_file)
-            self.transformers_utils_hub_get_from_cache = self.replace(transformers.utils.hub, 'get_from_cache', transformers_utils_hub_get_from_cache)
+            self.create_model_and_transforms = self.replace(
+                open_clip, "create_model_and_transforms", create_model_and_transforms_without_pretrained
+            )
+            self.CLIPTextModel_from_pretrained = self.replace(
+                ldm.modules.encoders.modules.CLIPTextModel, "from_pretrained", CLIPTextModel_from_pretrained
+            )
+            self.transformers_modeling_utils_load_pretrained_model = self.replace(
+                transformers.modeling_utils.PreTrainedModel,
+                "_load_pretrained_model",
+                transformers_modeling_utils_load_pretrained_model,
+            )
+            self.transformers_tokenization_utils_base_cached_file = self.replace(
+                transformers.tokenization_utils_base, "cached_file", transformers_tokenization_utils_base_cached_file
+            )
+            self.transformers_configuration_utils_cached_file = self.replace(
+                transformers.configuration_utils, "cached_file", transformers_configuration_utils_cached_file
+            )
+            self.transformers_utils_hub_get_from_cache = self.replace(
+                transformers.utils.hub, "get_from_cache", transformers_utils_hub_get_from_cache
+            )
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         for obj, field, original in self.replaced:
